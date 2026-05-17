@@ -1,40 +1,53 @@
 import os
+import json
 from datetime import datetime
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # scopes memberikan izin penuh untuk membaca dan menulis di google calendar
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 
 def get_calendar_service():
     creds = None
-    # file token.json menyimpan token akses dan dibuat otomatis saat proses autentikasi pertama kali
-    if os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
     
+    # baca string JSON dari .env
+    token_json_str = os.getenv("GOOGLE_TOKEN_JSON")
+    creds_json_str = os.getenv("GOOGLE_CREDS_JSON")
+    
+    # pakai token jika ada di env
+    if token_json_str:
+        try:
+            token_info = json.loads(token_json_str)
+            creds = Credentials.from_authorized_user_info(token_info, SCOPES)
+        except json.JSONDecodeError:
+            print("Error: GOOGLE_TOKEN_JSON tidak valid.")
+        
+    # jika tidak ada token valid, coba proses kredensial
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                'credentials.json', SCOPES)
-            creds = flow.run_local_server(port=0)
+            # fallback jika token tidak valid
+            if not creds_json_str:
+                raise Exception("Error: GOOGLE_CREDS_JSON tidak ditemukan di .env")
         
-        # simpan token untuk penggunaan selanjutnya
-        with open('token.json', 'w') as token:
-            token.write(creds.to_json())
-    
+            client_config = json.loads(creds_json_str)
+            flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
+            creds = flow.run_local_server(port=0)
+            
+            # token baru dicetak di terminal agar bisa disalin ke .env jika diperlukan
+            print("Token baru berhasil dibuat. Salin teks di bawah ini ke GOOGLE_TOKEN_JSON jika token lama rusak:")
+            print(creds.to_json())
+            
     return build('calendar', 'v3', credentials=creds)
 
 def create_calendar_event(event_data: dict) -> str:
-    """
-    Fungsi untuk memasukkan event baru ke Google Calendar berdasarkan dictionary JSON.
-    Returns: URL link ke event kalender yang berhasil dibuat.
-    """
-    
     try:
         service = get_calendar_service()
         
