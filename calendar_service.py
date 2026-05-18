@@ -83,6 +83,54 @@ def create_calendar_event(event_data: dict) -> str:
     except HttpError as error:
         raise Exception(f"Terjadi error saat membuat event di Google Calendar: {error}")
 
+def search_calendar_events(query: str, max_results: int = 5) -> list:
+    service = get_calendar_service()
+    now = datetime.utcnow().isoformat() + 'Z'
+    
+    result = service.events().list(
+        calendarId='primary',
+        q=query,
+        timeMin=now,
+        maxResults=max_results,
+        singleEvents=True,
+        orderBy='startTime'
+    ).execute()
+    
+    return result.get('items', [])
+
+def update_calendar_event(event_id: str, event_data: dict) -> str:
+    service = get_calendar_service()
+    
+    waktu_mulai = event_data['waktu']
+    waktu_selesai = event_data.get('waktu_selesai')
+    
+    if not waktu_selesai:
+        from datetime import timedelta
+        dt = datetime.fromisoformat(waktu_mulai)
+        waktu_selesai = (dt + timedelta(hours=1)).isoformat()
+    
+    patch_body = {
+        'summary': event_data['nama_acara'],
+        'location': event_data.get('lokasi', ''),
+        'description': event_data.get('deskripsi', ''),
+        'start': {'dateTime': waktu_mulai, 'timeZone': 'Asia/Jakarta'},
+        'end': {'dateTime': waktu_selesai, 'timeZone': 'Asia/Jakarta'},
+    }
+    
+    event = service.events().patch(
+        calendarId='primary',
+        eventId=event_id,
+        body=patch_body
+    ).execute()
+    
+    return event.get('htmlLink')
+
+def delete_calendar_event(event_id: str):
+    service = get_calendar_service()
+    service.events().delete(
+        calendarId='primary',
+        eventId=event_id
+    ).execute()
 
 #uji coba
 if __name__ == "__main__":

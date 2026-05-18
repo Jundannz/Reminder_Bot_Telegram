@@ -5,7 +5,7 @@ from google import genai
 from google.genai import types # Dibutuhkan untuk memanggil GenerateContentConfig
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
-from typing import List
+from typing import List, Literal
 
 # Load env
 load_dotenv()
@@ -17,11 +17,18 @@ client = genai.Client(
 
 # 1. Pastikan skema memiliki deskripsi yang jelas untuk memandu model
 class EventDetails(BaseModel):
-    nama_acara: str = Field(description="Nama atau judul agenda acara")
-    waktu: str = Field(description="Waktu mulai acara dalam format ISO 8601 (contoh: 2026-05-20T19:00:00+07:00)")
-    waktu_selesai: str | None = Field(default=None, description="Waktu selesai acara format ISO 8601, berikan null jika tidak ada informasi jelas")
-    lokasi: str | None = Field(default=None, description="Tempat atau ruangan acara, berikan null jika tidak disebutkan")
-    deskripsi: str = Field(description="Ringkasan singkat, catatan, atau instruksi tambahan dari teks")
+    intent: Literal["create", "update", "delete"] = Field(
+        description="'create' jika ini jadwal baru, 'update' jika ada perubahan jadwal, 'delete' jika acara dibatalkan atau dihapus"
+    )
+    nama_acara: str = Field(description="Nama acara baru atau nama acara yang dirujuk")
+    referensi_lama: str | None = Field(
+        default=None,
+        description="Hanya intisari nama acara lama yang dirujuk. JANGAN masukkan keterangan waktu seperti 'besok' atau 'jam'. Contoh: 'kumpul editing PIONIR'"
+    )
+    waktu: str = Field(description="Waktu mulai dalam format ISO 8601")
+    waktu_selesai: str | None = Field(default=None, description="Waktu selesai, null jika tidak disebutkan")
+    lokasi: str | None = Field(default=None, description="Lokasi acara, null jika tidak disebutkan")
+    deskripsi: str = Field(description="Ringkasan singkat dari teks")
 
 class EventList(BaseModel):
     events: List[EventDetails] = Field(description="Daftar semua agenda yang ditemukan dalam teks. Jika hanya ada satu agenda, tetap kembalikan sebagai list berisi satu item.")
