@@ -6,6 +6,9 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from llm_extractor import extract_event_info
 from calendar_service import create_calendar_event, search_calendar_events, update_calendar_event, delete_calendar_event, create_google_task
+from fastapi import FastAPI, Request, Response
+from contextlib import asynccontextmanager
+import uvicorn
 
 load_dotenv()
 
@@ -196,23 +199,57 @@ async def handle_pdf_document(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception as e:
         await pesan_tunggu.edit_text(f"Gagal memproses PDF. Error: {str(e)}")
         
+token = os.getenv("TELEGRAM_BOT_TOKEN")
+if not token:
+    raise ValueError("Error: TELEGRAM_BOT_TOKEN tidak ditemukan di environment")
+
+# Inisialisasi PTB Application secara global
+ptb_app = ApplicationBuilder().token(token).build()
+
+# Daftarkan semua handler
+ptb_app.add_handler(CommandHandler("start", start_command))
+ptb_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
+ptb_app.add_handler(MessageHandler(filters.Document.PDF, handle_pdf_document))
+ptb_app.add_handler(CallbackQueryHandler(handle_update_callback, pattern="^(confirm|cancel)_(update|delete):"))
+
+# Webhook URL (Nanti diisi dengan domain yang diberikan oleh Koyeb/Render)
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    # Dijalankan saat server FastAPI menyala
+    if WEBHOOK_URL:
+        await ptb_app.bot.set_webhook(url=WEBHOOK_URL)
+        print(f"Webhook berhasil diatur ke: {WEBHOOK_URL}")
+    else:
+        print("Peringatan: WEBHOOK_URL belum diatur. Bot mungkin tidak akan menerima pesan.")
+        
+    async with ptb_app:
+        await ptb_app.start()
+        yield # Server berjalan di titik ini
+        await ptb_app.stop()
+
+# Inisialisasi FastAPI
+app = FastAPI(lifespan=lifespan)
+
+@app.post("/webhook")
+async def process_webhook(request: Request):
+    # Endpoint ini adalah pintu masuk pesan dari server Telegram
+    try:
+        req_json = await request.json()
+        update = Update.de_json(req_json, ptb_app.bot)
+        await ptb_app.process_update(update)
+        return Response(status_code=200)
+    except Exception as e:
+        print(f"Error memproses webhook: {e}")
+        return Response(status_code=500)
+
+@app.get("/")
+async def health_check():
+    # Endpoint root biarkan hanya untuk cek status server (Health Check)
+    return {"status": "ok", "message": "Telegram Calendar Bot is running via Webhook"}
+
 if __name__ == "__main__":
-    #inisialisasi bot dari api
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    
-    if not token:
-        print("Error: TELEGRAM_BOT_TOKEN tidak ditemukan di environment")
-        exit(1)
-    
-    app = ApplicationBuilder().token(token).build()
-    
-    # daftarkan handler untuk command /start dan pesan teks biasa
-    app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
-    # handler khusus untuk dokumen PDF
-    app.add_handler(MessageHandler(filters.Document.PDF, handle_pdf_document))
-    app.add_handler(CallbackQueryHandler(handle_update_callback, pattern="^(confirm|cancel)_(update|delete):"))
-    
-    print("Bot Telegram sudah menyala. Tekan Ctrl+C untuk mematikan.")
-    
-    app.run_polling()
+    # Konfigurasi port dinamis sesuai platform cloud (default 8000 untuk lokal)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("bot_main:app", host="0.0.0.0", port=port)
