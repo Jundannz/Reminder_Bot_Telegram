@@ -18,23 +18,22 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
 async def process_and_reply(update: Update, text_content: str, status_message):
     try:
-        # ekstrak informasi acara jadi dictionary menggunakan llm
-        event_data = extract_event_info(text_content)
+        events = extract_event_info(text_content)
         
-        # kirim data ke google calendar
-        link_kalender = create_calendar_event(event_data)
+        teks_balasan = f"<b>{len(events)} Jadwal Berhasil Ditambahkan!</b>\n"
         
-        # susun konfirmasi akhir
-        lokasi = event_data.get('lokasi') if event_data.get('lokasi') else "Tidak disebutkan"
-        
-        teks_balasan = (
-            "<b>Jadwal Berhasil Ditambahkan!</b>\n\n"
-            f"Nama Acara: {event_data['nama_acara']}\n"
-            f"Waktu Mulai: {event_data['waktu']}\n"
-            f"Lokasi: {lokasi}\n"
-            f"Deskripsi: {event_data['deskripsi']}\n\n"
-            f"Silakan cek di sini: {link_kalender}"
-        )
+        for i, event_data in enumerate(events, start=1):
+            link_kalender = create_calendar_event(event_data)
+            lokasi = event_data.get('lokasi') if event_data.get('lokasi') else "Tidak disebutkan"
+            
+            teks_balasan += (
+                f"\n<b>Acara {i}</b>\n"
+                f"Nama Acara: {event_data['nama_acara']}\n"
+                f"Waktu Mulai: {event_data['waktu']}\n"
+                f"Lokasi: {lokasi}\n"
+                f"Deskripsi: {event_data['deskripsi']}\n"
+                f"Link: {link_kalender}\n"
+            )
         
         await status_message.edit_text(teks_balasan, parse_mode='HTML', disable_web_page_preview=True)
         

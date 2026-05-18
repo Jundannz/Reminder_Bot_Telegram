@@ -5,6 +5,7 @@ from google import genai
 from google.genai import types # Dibutuhkan untuk memanggil GenerateContentConfig
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
+from typing import List
 
 # Load env
 load_dotenv()
@@ -21,6 +22,9 @@ class EventDetails(BaseModel):
     waktu_selesai: str | None = Field(default=None, description="Waktu selesai acara format ISO 8601, berikan null jika tidak ada informasi jelas")
     lokasi: str | None = Field(default=None, description="Tempat atau ruangan acara, berikan null jika tidak disebutkan")
     deskripsi: str = Field(description="Ringkasan singkat, catatan, atau instruksi tambahan dari teks")
+
+class EventList(BaseModel):
+    events: List[EventDetails] = Field(description="Daftar semua agenda yang ditemukan dalam teks. Jika hanya ada satu agenda, tetap kembalikan sebagai list berisi satu item.")
 
 def extract_event_info(raw_text: str):
     # Dapatkan waktu saat ini sebagai jangkar referensi tanggal relatif
@@ -39,12 +43,12 @@ def extract_event_info(raw_text: str):
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
             response_mime_type="application/json",
-            response_schema=EventDetails,
+            response_schema=EventList,
             temperature=0.1
         )
     )
 
-    return json.loads(response.text)
+    return json.loads(response.text)["events"]
 
 # Testing
 if __name__ == "__main__":
