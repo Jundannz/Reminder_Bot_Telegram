@@ -11,7 +11,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # scopes memberikan izin penuh untuk membaca dan menulis di google calendar
-SCOPES = ['https://www.googleapis.com/auth/calendar']
+SCOPES = [
+    'https://www.googleapis.com/auth/calendar',
+    'https://www.googleapis.com/auth/tasks'
+]
 
 def get_calendar_service():
     creds = None
@@ -131,6 +134,49 @@ def delete_calendar_event(event_id: str):
         calendarId='primary',
         eventId=event_id
     ).execute()
+
+def get_tasks_service():
+    # Fungsi ini identik dengan get_calendar_service, tapi me-return layanan 'tasks'
+    creds = None
+    token_json_str = os.getenv("GOOGLE_TOKEN_JSON")
+    creds_json_str = os.getenv("GOOGLE_CREDS_JSON")
+    
+    if token_json_str:
+        try:
+            token_info = json.loads(token_json_str)
+            creds = Credentials.from_authorized_user_info(token_info, SCOPES)
+        except json.JSONDecodeError:
+            pass
+        
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            client_config = json.loads(creds_json_str)
+            flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
+            creds = flow.run_local_server(port=0)
+            print("Token baru dengan akses Tasks berhasil dibuat. Salin teks di bawah ini ke GOOGLE_TOKEN_JSON:")
+            print(creds.to_json())
+            
+    return build('tasks', 'v1', credentials=creds)
+
+def create_google_task(task_data: dict) -> str:
+    service = get_tasks_service()
+    
+    # Google Tasks API v1 mengabaikan jam dan membutuhkan format RFC 3339 di tengah malam UTC
+    waktu_raw = task_data['waktu']
+    tanggal_murni = waktu_raw.split('T')[0]
+    due_date = f"{tanggal_murni}T00:00:00.000Z"
+    
+    task_body = {
+        'title': task_data['nama_acara'],
+        'notes': task_data.get('deskripsi', ''),
+        'due': due_date
+    }
+    
+    # '@default' otomatis memasukkan task ke list utama akunmu
+    task = service.tasks().insert(tasklist='@default', body=task_body).execute()
+    return task.get('id')
 
 #uji coba
 if __name__ == "__main__":

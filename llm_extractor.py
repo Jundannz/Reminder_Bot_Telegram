@@ -17,18 +17,18 @@ client = genai.Client(
 
 # 1. Pastikan skema memiliki deskripsi yang jelas untuk memandu model
 class EventDetails(BaseModel):
-    intent: Literal["create", "update", "delete"] = Field(
-        description="'create' jika ini jadwal baru, 'update' jika ada perubahan jadwal, 'delete' jika acara dibatalkan atau dihapus"
+    intent: Literal["create", "update", "delete", "create_task"] = Field(
+        description="'create' untuk jadwal biasa, 'update' untuk revisi, 'delete' untuk batal, 'create_task' untuk tugas, PR, freelance, atau deadline pekerjaan."
     )
-    nama_acara: str = Field(description="Nama acara baru atau nama acara yang dirujuk")
+    nama_acara: str = Field(description="Nama acara atau nama tugas/deadline")
     referensi_lama: str | None = Field(
         default=None,
         description="Hanya intisari nama acara lama yang dirujuk. JANGAN masukkan keterangan waktu seperti 'besok' atau 'jam'. Contoh: 'kumpul editing PIONIR'"
     )
-    waktu: str = Field(description="Waktu mulai dalam format ISO 8601")
-    waktu_selesai: str | None = Field(default=None, description="Waktu selesai, null jika tidak disebutkan")
-    lokasi: str | None = Field(default=None, description="Lokasi acara, null jika tidak disebutkan")
-    deskripsi: str = Field(description="Ringkasan singkat dari teks")
+    waktu: str = Field(description="Waktu mulai atau tenggat waktu dalam format ISO 8601")
+    waktu_selesai: str | None = Field(default=None, description="Waktu selesai, null jika tidak disebutkan atau jika intent adalah create_task")
+    lokasi: str | None = Field(default=None, description="Lokasi, null jika tidak disebutkan")
+    deskripsi: str = Field(description="Ringkasan tugas atau deskripsi detail acara")
 
 class EventList(BaseModel):
     events: List[EventDetails] = Field(description="Daftar semua agenda yang ditemukan dalam teks. Jika hanya ada satu agenda, tetap kembalikan sebagai list berisi satu item.")

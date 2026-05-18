@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from llm_extractor import extract_event_info
-from calendar_service import create_calendar_event, search_calendar_events, update_calendar_event, delete_calendar_event
+from calendar_service import create_calendar_event, search_calendar_events, update_calendar_event, delete_calendar_event, create_google_task
 
 load_dotenv()
 
@@ -23,9 +23,12 @@ async def process_and_reply(update: Update, text_content: str, status_message, c
         create_events = [e for e in events if e['intent'] == 'create']
         update_events = [e for e in events if e['intent'] == 'update']
         delete_events = [e for e in events if e['intent'] == 'delete']
-        
-        # 1. Proses Create
+        task_events = [e for e in events if e['intent'] == 'create_task']
+
+        # 1. Proses Create Event & Task
         teks_balasan_create = ""
+        
+        # Eksekusi Event Kalender
         for event_data in create_events:
             link = create_calendar_event(event_data)
             lokasi = event_data.get('lokasi') or "Tidak disebutkan"
@@ -37,11 +40,21 @@ async def process_and_reply(update: Update, text_content: str, status_message, c
                 f"Link: {link}\n\n"
             )
             
-        # tampilkan hasil create, atau ubah status jika hanya ada update
+        # Eksekusi Task/Deadline
+        for task_data in task_events:
+            create_google_task(task_data)
+            tanggal_deadline = task_data['waktu'].split('T')[0]
+            teks_balasan_create += (
+                f"<b>Tugas Baru</b>\n"
+                f"Nama: {task_data['nama_acara']}\n"
+                f"Deadline: {tanggal_deadline}\n"
+                f"Deskripsi: {task_data['deskripsi']}\n\n"
+            )
+            
         if teks_balasan_create:
             await status_message.edit_text(teks_balasan_create, parse_mode='HTML', disable_web_page_preview=True)
         else:
-            await status_message.edit_text("Memeriksa jadwal yang perlu diperbarui...")
+            await status_message.edit_text("Memeriksa jadwal yang perlu diperbarui/dihapus...")
 
         # 2. Proses Update
         if update_events and 'pending_updates' not in context.user_data:
