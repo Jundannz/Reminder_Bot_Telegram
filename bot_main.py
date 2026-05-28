@@ -19,9 +19,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(pesan_pembuka)
     
-async def process_and_reply(update: Update, text_content: str, status_message, context: ContextTypes.DEFAULT_TYPE):
+async def process_and_reply(update: Update, text_content: str, status_message, context: ContextTypes.DEFAULT_TYPE, image_path: str = None):
     try:
-        events = extract_event_info(text_content)
+        events = extract_event_info(text_content, image_path)
         
         create_events = [e for e in events if e['intent'] == 'create']
         update_events = [e for e in events if e['intent'] == 'update']
@@ -198,7 +198,24 @@ async def handle_pdf_document(update: Update, context: ContextTypes.DEFAULT_TYPE
         
     except Exception as e:
         await pesan_tunggu.edit_text(f"Gagal memproses PDF. Error: {str(e)}")
-        
+
+async def handle_photo_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ambil elemen terakhir [-1] untuk mendapatkan resolusi tertinggi dari Telegram
+    photo_file = await update.message.photo[-1].get_file()
+    nama_file_temp = f"temp_{photo_file.file_id}.jpg"
+    await photo_file.download_to_drive(nama_file_temp)
+    
+    # ambil caption foto jika ada, jika kosong berikan instruksi asali
+    caption = update.message.caption or "Tolong ekstrak jadwal dari gambar ini."
+    pesan_tunggu = await update.message.reply_text("Sedang membaca jadwal dari gambar...")
+    
+    try:
+        await process_and_reply(update, caption, pesan_tunggu, context, image_path=nama_file_temp)
+    finally:
+        # gunakan blok finally agar file foto dihapus dari peladen entah prosesnya berhasil atau gagal
+        if os.path.exists(nama_file_temp):
+            os.remove(nama_file_temp)
+
 token = os.getenv("TELEGRAM_BOT_TOKEN")
 if not token:
     raise ValueError("Error: TELEGRAM_BOT_TOKEN tidak ditemukan di environment")
@@ -210,6 +227,7 @@ ptb_app = ApplicationBuilder().token(token).build()
 ptb_app.add_handler(CommandHandler("start", start_command))
 ptb_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 ptb_app.add_handler(MessageHandler(filters.Document.PDF, handle_pdf_document))
+ptb_app.add_handler(MessageHandler(filters.PHOTO, handle_photo_message))
 ptb_app.add_handler(CallbackQueryHandler(handle_update_callback, pattern="^(confirm|cancel)_(update|delete):"))
 
 # Webhook URL (Nanti diisi dengan domain yang diberikan oleh Koyeb/Render)

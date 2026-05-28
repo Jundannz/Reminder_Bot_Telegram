@@ -1,6 +1,7 @@
 import os
 import json
 from datetime import datetime
+from PIL import Image
 from google import genai
 from google.genai import types # Dibutuhkan untuk memanggil GenerateContentConfig
 from pydantic import BaseModel, Field
@@ -33,7 +34,7 @@ class EventDetails(BaseModel):
 class EventList(BaseModel):
     events: List[EventDetails] = Field(description="Daftar semua agenda yang ditemukan dalam teks. Jika hanya ada satu agenda, tetap kembalikan sebagai list berisi satu item.")
 
-def extract_event_info(raw_text: str):
+def extract_event_info(raw_text: str, image_path: str = None):
     # Dapatkan waktu saat ini sebagai jangkar referensi tanggal relatif
     current_time = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
@@ -43,10 +44,16 @@ def extract_event_info(raw_text: str):
     Tugasmu adalah mengekstrak entitas dari teks user ke dalam skema JSON yang ditentukan. Jangan berikan teks prolog atau epilog.
     """
 
+    # Siapkan list konten. Jika ada gambar, sisipkan di urutan pertama.
+    contents_list = [raw_text]
+    if image_path:
+        img = Image.open(image_path)
+        contents_list.insert(0, img)
+
     # 2. pemanggilan yang benar menggunakan konfigurasi objek terstruktur
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=raw_text,
+        model="gemini-2.5-flash-8b", # Gunakan model 8b sesuai kesepakatan sebelumnya
+        contents=contents_list,
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
             response_mime_type="application/json",
