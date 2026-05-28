@@ -52,7 +52,7 @@ def extract_event_info(raw_text: str, image_path: str = None):
 
     # 2. pemanggilan yang benar menggunakan konfigurasi objek terstruktur
     response = client.models.generate_content(
-        model="gemini-2.5-flash-8b", # Gunakan model 8b sesuai kesepakatan sebelumnya
+        model="gemini-2.5-flash",
         contents=contents_list,
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
