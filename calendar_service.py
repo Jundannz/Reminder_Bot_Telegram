@@ -178,6 +178,32 @@ def create_google_task(task_data: dict) -> str:
     task = service.tasks().insert(tasklist='@default', body=task_body).execute()
     return task.get('id')
 
+def search_google_tasks(query: str, max_results: int = 5) -> list:
+    service = get_tasks_service()
+    # menarik daftar tugas dan mencari secara manual
+    results = service.tasks().list(tasklist='@default', showHidden=True).execute()
+    items = results.get('items', [])
+    
+    matched = [t for t in items if query.lower() in t.get('title', '').lower()]
+    return matched[:max_results]
+
+def update_google_task(task_id: str, task_data: dict) -> str:
+    service = get_tasks_service()
+    tanggal_murni = task_data['waktu'].split('T')[0]
+    due_date = f"{tanggal_murni}T00:00:00.000Z"
+    
+    task_body = {
+        'title': task_data['nama_acara'],
+        'notes': task_data.get('deskripsi', ''),
+        'due': due_date
+    }
+    task = service.tasks().patch(tasklist='@default', task=task_id, body=task_body).execute()
+    return task.get('id')
+
+def delete_google_task(task_id: str):
+    service = get_tasks_service()
+    service.tasks().delete(tasklist='@default', task=task_id).execute()
+
 #uji coba
 if __name__ == "__main__":
     data_uji = {

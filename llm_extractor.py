@@ -18,8 +18,8 @@ client = genai.Client(
 
 # 1. Pastikan skema memiliki deskripsi yang jelas untuk memandu model
 class EventDetails(BaseModel):
-    intent: Literal["create", "update", "delete", "create_task"] = Field(
-        description="'create' untuk jadwal biasa, 'update' untuk revisi, 'delete' untuk batal, 'create_task' untuk tugas, PR, freelance, atau deadline pekerjaan."
+    intent: Literal["create", "update", "delete", "create_task", "update_task", "delete_task"] = Field(
+        description="'create' untuk jadwal biasa, 'update' untuk revisi, 'delete' untuk batal, 'create_task'/'update_task'/'delete_task' untuk tugas, PR, freelance, atau deadline pekerjaan."
     )
     nama_acara: str = Field(description="Nama acara atau nama tugas/deadline")
     referensi_lama: str | None = Field(

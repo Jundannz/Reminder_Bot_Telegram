@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from llm_extractor import extract_event_info
-from calendar_service import create_calendar_event, search_calendar_events, update_calendar_event, delete_calendar_event, create_google_task
+from calendar_service import create_calendar_event, search_calendar_events, update_calendar_event, delete_calendar_event, create_google_task, search_google_tasks, update_google_task, delete_google_task
 from fastapi import FastAPI, Request, Response
 from contextlib import asynccontextmanager
 import uvicorn
@@ -27,6 +27,8 @@ async def process_and_reply(update: Update, text_content: str, status_message, c
         update_events = [e for e in events if e['intent'] == 'update']
         delete_events = [e for e in events if e['intent'] == 'delete']
         task_events = [e for e in events if e['intent'] == 'create_task']
+        update_task_events = [e for e in events if e['intent'] == 'update_task']
+        delete_task_events = [e for e in events if e['intent'] == 'delete_task']
 
         # 1. Proses Create Event & Task
         teks_balasan_create = ""
@@ -118,6 +120,59 @@ async def process_and_reply(update: Update, text_content: str, status_message, c
             )
             await update.message.reply_text(pesan_konfirmasi, parse_mode='HTML', reply_markup=keyboard)
             
+        # 4. Proses Update & Delete Task
+        if (update_task_events or delete_task_events) and 'pending_updates' not in context.user_data:
+            context.user_data['pending_updates'] = {}
+
+        for task_data in update_task_events:
+            query = task_data.get('referensi_lama') or task_data['nama_acara']
+            kandidat = search_google_tasks(query)
+            
+            if not kandidat:
+                await update.message.reply_text(f"Tidak ditemukan tugas lama untuk direvisi: <b>{query}</b>", parse_mode='HTML')
+                continue
+            
+            target = kandidat[0]
+            context.user_data['pending_updates'][target['id']] = task_data
+            
+            keyboard = InlineKeyboardMarkup([[ 
+                InlineKeyboardButton("Ya, ubah deadline", callback_data=f"confirm_update_task:{target['id']}"),
+                InlineKeyboardButton("Batal", callback_data=f"cancel_update_task:{target['id']}")
+            ]])
+            
+            pesan_konfirmasi = (
+                f"Ditemukan tugas: <b>{target['title']}</b>\n"
+                f"Deadline lama: {target.get('due', 'N/A').split('T')[0]}\n\n"
+                f"Akan diubah menjadi:\n"
+                f"Judul: {task_data['nama_acara']}\n"
+                f"Deadline baru: {task_data['waktu'].split('T')[0]}\n\n"
+                f"Lanjutkan?"
+            )
+            await update.message.reply_text(pesan_konfirmasi, parse_mode='HTML', reply_markup=keyboard)
+
+        for task_data in delete_task_events:
+            query = task_data.get('referensi_lama') or task_data['nama_acara']
+            kandidat = search_google_tasks(query)
+            
+            if not kandidat:
+                await update.message.reply_text(f"Tidak ditemukan tugas untuk dihapus: <b>{query}</b>", parse_mode='HTML')
+                continue
+            
+            target = kandidat[0]
+            context.user_data['pending_updates'][target['id']] = task_data
+            
+            keyboard = InlineKeyboardMarkup([[ 
+                InlineKeyboardButton("Ya, Hapus Tugas", callback_data=f"confirm_delete_task:{target['id']}"),
+                InlineKeyboardButton("Batal", callback_data=f"cancel_delete_task:{target['id']}")
+            ]])
+            
+            pesan_konfirmasi = (
+                f"<b>KONFIRMASI HAPUS TUGAS</b>\n\n"
+                f"Ditemukan tugas: <b>{target['title']}</b>\n\n"
+                f"Apakah kamu yakin ingin menghapus tugas ini?"
+            )
+            await update.message.reply_text(pesan_konfirmasi, parse_mode='HTML', reply_markup=keyboard)
+            
     except Exception as e:
         await update.message.reply_text(f"Gagal memproses. Error: {str(e)}")
 
@@ -135,21 +190,25 @@ async def handle_update_callback(update: Update, context: ContextTypes.DEFAULT_T
     try:
         if action == "confirm_update":
             link = update_calendar_event(event_id, event_data)
-            await query.edit_message_text(
-                f"<b>Jadwal berhasil diperbarui!</b>\nNama: {event_data['nama_acara']}\nWaktu baru: {event_data['waktu']}\nLink: {link}",
-                parse_mode='HTML', disable_web_page_preview=True
-            )
+            await query.edit_message_text(f"<b>Jadwal diperbarui!</b>\nLink: {link}", parse_mode='HTML')
             del context.user_data['pending_updates'][event_id]
 
         elif action == "confirm_delete":
             delete_calendar_event(event_id)
-            await query.edit_message_text(
-                f"<b>Jadwal Dihapus!</b>\nAcara <b>{event_data['nama_acara']}</b> telah dihapus dari kalender.",
-                parse_mode='HTML'
-            )
+            await query.edit_message_text(f"Acara <b>{event_data['nama_acara']}</b> dihapus.", parse_mode='HTML')
             del context.user_data['pending_updates'][event_id]
             
-        elif action in ["cancel_update", "cancel_delete"]:
+        elif action == "confirm_update_task":
+            update_google_task(event_id, event_data)
+            await query.edit_message_text(f"<b>Tugas diperbarui!</b>\nDeadline baru: {event_data['waktu'].split('T')[0]}", parse_mode='HTML')
+            del context.user_data['pending_updates'][event_id]
+
+        elif action == "confirm_delete_task":
+            delete_google_task(event_id)
+            await query.edit_message_text(f"Tugas <b>{event_data['nama_acara']}</b> dihapus.", parse_mode='HTML')
+            del context.user_data['pending_updates'][event_id]
+            
+        elif action.startswith("cancel_"):
             context.user_data.get('pending_updates', {}).pop(event_id, None)
             await query.edit_message_text("Aksi dibatalkan.")
             
@@ -228,7 +287,7 @@ ptb_app.add_handler(CommandHandler("start", start_command))
 ptb_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 ptb_app.add_handler(MessageHandler(filters.Document.PDF, handle_pdf_document))
 ptb_app.add_handler(MessageHandler(filters.PHOTO, handle_photo_message))
-ptb_app.add_handler(CallbackQueryHandler(handle_update_callback, pattern="^(confirm|cancel)_(update|delete):"))
+ptb_app.add_handler(CallbackQueryHandler(handle_update_callback, pattern="^(confirm|cancel)_(update|delete|update_task|delete_task):"))
 
 # Webhook URL (Nanti diisi dengan domain yang diberikan oleh Koyeb/Render)
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
